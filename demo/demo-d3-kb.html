@@ -1,0 +1,197 @@
+<!doctype html>
+
+<meta charset="utf-8">
+<title>Dagre Test Page</title>
+
+<h2>Graph Visualization</h2>
+
+<svg width=0 height=0>
+  <defs>
+    <marker id="arrowhead"
+            viewBox="0 0 10 10"
+            refX="8"
+            refY="5"
+            markerUnits="strokeWidth"
+            markerWidth="8"
+            markerHeight="5"
+            orient="auto"
+            style="fill: #ccc">
+      <path d="M 0 0 L 10 5 L 0 10 z"></path>
+    </marker>
+  </defs>
+</svg>
+
+<script src="../d3.v2.min.js"></script>
+<script src="../dagre.js"></script>
+
+<style>
+/* tree.css */
+.node circle {
+  fill: #fff;
+  stroke: steelblue;
+  stroke-width: 1.5px;
+}
+
+.node {
+  font: 10px sans-serif;
+}
+
+/* .link */
+.edge {
+  fill: none;
+  stroke: #ccc;
+  stroke-width: 1.5px;
+}
+
+/* demo */
+#node-CLOSED circle {
+  stroke-width: 2px;
+  fill: #f88;
+}
+</style>
+
+<script>
+  var nodePadding = 10;
+</script>
+
+<script>
+/* v1
+  // Source RFC 793
+  var transitions = [
+    { source: "CLOSED", target: "LISTEN" },
+    { source: "LISTEN", target: "SYN RCVD" },
+    { source: "LISTEN", target: "SYN SENT" },
+    { source: "LISTEN", target: "CLOSED" },
+    { source: "SYN RCVD", target: "FINWAIT-1" },
+    { source: "SYN RCVD", target: "ESTAB" },
+    { source: "SYN SENT", target: "SYN RCVD" },
+    { source: "SYN SENT", target: "ESTAB" },
+    { source: "SYN SENT", target: "CLOSED" },
+    { source: "ESTAB", target: "FINWAIT-1" },
+    { source: "ESTAB", target: "CLOSE WAIT" },
+    { source: "FINWAIT-1", target: "FINWAIT-2" },
+    { source: "FINWAIT-1", target: "CLOSING" },
+    { source: "CLOSE WAIT", target: "LAST-ACK" },
+    { source: "FINWAIT-2", target: "TIME WAIT" },
+    { source: "CLOSING", target: "TIME WAIT" },
+    { source: "LAST-ACK", target: "CLOSED" },
+    { source: "TIME WAIT", target: "CLOSED" },
+  ];
+
+  // Get the data in the right form
+  var stateKeys = {};
+  transitions.forEach(function(d) {
+    var source = stateKeys[d.source],
+        target = stateKeys[d.target];
+    if (!source) source = stateKeys[d.source] = { label: d.source, edges: [] };
+    if (!target) target = stateKeys[d.target] = { label: d.target, edges: [] };
+    source.edges.push(d);
+    target.edges.push(d);
+    d.source = source;
+    d.target = target;
+  });
+  var states = d3.values(stateKeys);
+*/
+
+/* v2 */
+  var result = dagre.dot.toObjects(
+"digraph { \
+CLOSED -> LISTEN \
+LISTEN -> SYN_RCVD \
+LISTEN -> SYN_SENT \
+LISTEN -> CLOSED \
+SYN_RCVD -> FINWAIT_1 \
+SYN_RCVD -> ESTAB \
+SYN_SENT -> SYN_RCVD \
+SYN_SENT -> ESTAB \
+SYN_SENT -> CLOSED \
+ESTAB -> FINWAIT_1 \
+ESTAB -> CLOSE_WAIT \
+FINWAIT_1 -> FINWAIT_2 \
+FINWAIT_1 -> CLOSING \
+CLOSE_WAIT -> LAST_ACK \
+FINWAIT_2 -> TIME_WAIT \
+CLOSING -> TIME_WAIT \
+LAST_ACK -> CLOSED \
+TIME_WAIT -> CLOSED \
+}"
+  );
+  var transitions = result.edges
+  var states = result.nodes;
+/* */
+  function spline(e) {
+    // points in the middle
+    var points = e.dagre.points.slice(0);
+    //pad the arrows (probably want the circle radius instead)
+    var source = dagre.util.intersectRect(e.source.dagre, points[0]);
+    var target = dagre.util.intersectRect(e.target.dagre, points[points.length - 1]);
+    points.unshift(source);
+    points.push(target);
+
+    return d3.svg.line()
+      .x(function(d) { return d.x; })
+      .y(function(d) { return d.y; })
+      .interpolate("linear") //monotone?
+      (points);
+  }
+
+  // Now start laying things out
+  var svg = d3.select("svg");
+  /* svgGroup (vis) */
+  var svgGroup = svg.append("g");
+
+  /* edges (link) */
+  var edges = svgGroup
+    .selectAll("path.edge")
+    .data(transitions)
+    .enter()
+      .append("path")
+      .attr("class", "edge")
+      .attr("marker-end", "url(#arrowhead)");
+
+  /* nodes (node) */
+  var nodes = svgGroup
+    .selectAll("g.node")
+    .data(states)
+    .enter()
+      .append("g")
+      .attr("class", "node")
+      .attr("id", function(d) { return "node-" + d.label });
+
+  // Append text
+  var labels = nodes
+    .append("text")
+      .attr("text-anchor", "start")
+      .attr("dx", 8).attr("dy",6)
+      .text(function(d) { return d.label; })
+  nodes.each(function(d) {
+    //set width/height for dagre layout
+    var bbox = d.bbox = this.getBBox();
+    d.width = bbox.width + 2 * nodePadding;
+    d.height = bbox.height + 2 * nodePadding;
+  });
+
+  // Create the layout and get the graph
+  // want to set the sizes before we lay them out
+  dagre.layout()
+    .nodeSep(50)
+    .edgeSep(10)
+    .rankSep(50)
+    .nodes(states)
+    .edges(transitions)
+    .debugLevel(1)
+    .run();
+
+  nodes.attr("transform", function(d) { return 'translate('+ d.dagre.x +','+ d.dagre.y +')'; })
+    .append("circle").attr("r", 6);
+
+  edges
+    // Set the id. of the SVG element to have access to it later
+    .attr('id', function(e) { return e.dagre.id; })
+    .attr("d", spline);
+
+  // Resize the SVG element
+  var svgBBox = svg.node().getBBox();
+  svg.attr("width", svgBBox.width + 10);
+  svg.attr("height", svgBBox.height + 10);
+</script>
